@@ -1,0 +1,22 @@
+name: VarietyHunters
+version: '0.1.0'
+main: me.alphamode.varietyhunters.VarietyHunters
+api-version: 1.19
+authors: [ AlphaMode ]
+commands:
+  initgame:
+    description: Prepares a game
+    usage: /<command>
+    permission: varietyhunters.game
+  startgame:
+    description: Starts a game
+    usage: /<command>
+    permission: varietyhunters.game
+  endgame:
+    description: Ends the current game
+    usage: /<command>
+    permission: varietyhunters.game
+  add:
+    description: Add hunters to a game
+    usage: /<command>
+    permission: varietyhunters.game
