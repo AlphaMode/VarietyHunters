@@ -4,15 +4,18 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import org.bukkit.*;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
@@ -58,19 +61,32 @@ public class ManhuntGuiHandler implements Listener {
          head.setItemMeta(skull);
          players.addItem(new ItemStack(head));
       });
+      ItemStack startButton = new ItemStack(Material.LIME_DYE);
+      startButton.editMeta(itemMeta -> itemMeta.displayName(text("Start Game", TextColor.color(NamedTextColor.GREEN))));
+      players.setItem(53, startButton);
       return players;
    }
 
    @EventHandler
    public void onInventoryClick(InventoryClickEvent event) {
       ItemStack clicked = event.getCurrentItem();
-      if (!event.getInventory().equals(selectionInv) && clicked != null) return;
+      if (!event.getInventory().equals(selectionInv)) return;
+      ManhuntGame game = ManhuntEvents.getCurrentGame();
+      if (clicked == null)
+         return;
+      if (clicked.getType() == Material.GREEN_STAINED_GLASS_PANE) {
+         event.setCancelled(true);
+         game.startGame();
+         event.getWhoClicked().closeInventory();
+         return;
+      }
       if (clicked.getItemMeta() instanceof SkullMeta skullMeta) {
          this.selectedPlayer = skullMeta.getOwningPlayer();
          selectionInv = Bukkit.createInventory(event.getWhoClicked(), 27, Component.text("Select class for: " + selectedPlayer.getName()));
          ItemStack runnerClass = new ItemStack(Material.DIAMOND_BOOTS);
          runnerClass.editMeta(itemMeta -> {
             itemMeta.displayName(text("Runner", TextColor.color(NamedTextColor.GREEN)));
+            itemMeta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             itemMeta.getPersistentDataContainer().set(CLASS_KEY, PersistentDataType.STRING, "runner");
          });
          selectionInv.setItem(10, runnerClass);
@@ -83,6 +99,7 @@ public class ManhuntGuiHandler implements Listener {
          selectionInv.setItem(12, hunterClass);
          assassinClass.editMeta(itemMeta -> {
             itemMeta.displayName(text("Assassin", TextColor.color(NamedTextColor.RED)));
+            itemMeta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             itemMeta.getPersistentDataContainer().set(CLASS_KEY, PersistentDataType.STRING, "assassin");
          });
          selectionInv.setItem(14, assassinClass);
@@ -105,29 +122,28 @@ public class ManhuntGuiHandler implements Listener {
       if (clicked.getItemMeta().getPersistentDataContainer().has(CLASS_KEY)) {
          PersistentDataContainer data = clicked.getItemMeta().getPersistentDataContainer();
          Player player = this.selectedPlayer.getPlayer();
-         ManhuntGame game = ManhuntEvents.getCurrentGame();
          switch (data.get(CLASS_KEY, PersistentDataType.STRING)) {
             case "assassin" -> {
                if (game.getAssassins().containsKey(player))
-                  game.getAssassins().remove(player);
+                  game.remove(ClassType.ASSASSIN, player);
                else
                   game.add(ClassType.ASSASSIN, player);
             }
             case "runner" -> {
                if (game.getRunners().contains(player))
-                  game.getRunners().remove(player);
+                  game.remove(ClassType.RUNNER, player);
                else
                   game.add(ClassType.RUNNER, player);
             }
             case "hunter" -> {
                if (game.getHunters().contains(player))
-                  game.getHunters().remove(player);
+                  game.remove(ClassType.HUNTER, player);
                else
                   game.add(ClassType.HUNTER, player);
             }
             case "random" -> {
                if (game.getRandomMen().contains(player))
-                  game.getRandomMen().remove(player);
+                  game.remove(ClassType.RANDOM_MAN, player);
                else
                   game.add(ClassType.RANDOM_MAN, player);
             }

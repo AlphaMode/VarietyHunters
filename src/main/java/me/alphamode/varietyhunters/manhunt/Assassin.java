@@ -6,9 +6,15 @@ public class Assassin {
    private final Player player;
    private Player observer;
    private boolean frozen;
+   private int ticksUntilUnfrozen = 0;
 
    public Assassin(Player player) {
       this.player = player;
+   }
+
+   public void tick() {
+      if (!frozen && ticksUntilUnfrozen != 0)
+         ticksUntilUnfrozen--;
    }
 
    public boolean isLinked() {
@@ -26,19 +32,17 @@ public class Assassin {
    }
 
    public boolean isFrozen() {
-      return frozen;
+      return frozen || ticksUntilUnfrozen != 0;
    }
 
    public void setFrozen(Player observer, boolean frozen) {
+      if (!frozen && this.frozen) this.ticksUntilUnfrozen = 10;
       this.frozen = frozen;
       if (frozen)
          this.observer = observer;
       else
          this.observer = null;
-   }
 
-   public Player getPlayer() {
-      return player;
    }
 
    public Player getObserver() {

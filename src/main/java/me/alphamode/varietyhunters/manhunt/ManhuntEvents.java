@@ -2,40 +2,39 @@ package me.alphamode.varietyhunters.manhunt;
 
 import com.destroystokyo.paper.event.server.ServerTickEndEvent;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
-import net.minecraft.world.damagesource.CombatRules;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
-import net.minecraft.world.item.enchantment.ProtectionEnchantment;
-import org.bukkit.Location;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Barrel;
-import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
+import org.bukkit.craftbukkit.v1_19_R3.block.CraftBlock;
 import org.bukkit.craftbukkit.v1_19_R3.entity.CraftPlayer;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.inventory.InventoryOpenEvent;
-import org.bukkit.event.player.PlayerAttemptPickupItemEvent;
-import org.bukkit.event.player.PlayerDropItemEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.*;
+import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.projectiles.ProjectileSource;
-import org.bukkit.util.BlockIterator;
 
 import java.util.ArrayList;
-import java.util.List;
 
 public class ManhuntEvents implements Listener {
    private static ManhuntGame currentGame = null;
-   private static final NamespacedKey CAN_PICKUP = NamespacedKey.fromString("can_pickup");
+   public static final NamespacedKey CAN_PICKUP = NamespacedKey.fromString("can_pickup");
 
    public static ManhuntGame getCurrentGame() {
       return currentGame;
@@ -52,14 +51,38 @@ public class ManhuntEvents implements Listener {
    }
 
    @EventHandler
+   public void onPlayerJoin(PlayerJoinEvent event) {
+      if (currentGame != null) {
+         for (ClassType type : ClassType.values()) {
+            if (currentGame.getOfflinePlayers().containsKey(type) && currentGame.getOfflinePlayers().get(type).contains(event.getPlayer().getUniqueId())) {
+               currentGame.add(type, true, event.getPlayer());
+               event.getPlayer().sendMessage(ManhuntGame.PREFIX.append(Component.text("You were reassigned to the ").append(Component.text(type.getDisplayName(), type.getColor()).append(Component.text(" class.", TextColor.color(NamedTextColor.GRAY))))));
+            }
+         }
+      }
+   }
+
+   @EventHandler
+   public void onPlayerQuit(PlayerQuitEvent event) {
+      if (currentGame != null) {
+         currentGame.getPlayers().forEach((classType, players) -> {
+            Player player = event.getPlayer();
+            if (players.contains(player)) {
+               players.remove(player);
+               if (classType == ClassType.ASSASSIN)
+                  currentGame.getAssassins().remove(player);
+               currentGame.getOfflinePlayers().computeIfAbsent(classType, type -> new ArrayList<>()).add(player.getUniqueId());
+            }
+         });
+      }
+   }
+
+   @EventHandler
    public void onMoveEvent(PlayerMoveEvent event) {
       if (isGameInProgress() && currentGame.getAssassins().containsKey(event.getPlayer())) {
+         Assassin assassin = currentGame.getAssassins().get(event.getPlayer());
          currentGame.getRunners().forEach(runner -> {
-            LivingEntity target = getTarget(runner);
-            boolean frozen = currentGame.getAssassins().containsKey(target);
-            currentGame.getAssassins().get(event.getPlayer()).setFrozen(runner, frozen);
-
-            event.setCancelled(frozen);
+            event.setCancelled(assassin.isFrozen());
          });
       }
    }
@@ -76,9 +99,7 @@ public class ManhuntEvents implements Listener {
             duration -= Mth.floor((float)duration * (float)i * 0.15F);
          }
          if (entity.remainingFireTicks < duration) {
-            entity.getBukkitEntity().sendMessage(Component.text("Orginial: " + event.getDuration() * 20));
-            entity.getBukkitEntity().sendMessage(Component.text("New: " + duration));
-            entity.setRemainingFireTicks(duration);
+            entity.setRemainingFireTicks(0);
          }
       }
    }
@@ -105,12 +126,27 @@ public class ManhuntEvents implements Listener {
             }
 
             if (assassin.isFrozen() || !assassin.isLinked()) {
-               event.setCancelled(true);
+               if (event.getEntity() instanceof Player)
+                  event.setCancelled(true);
             }
          }
-         if (currentGame.getAssassins().containsKey(event.getEntity()) && currentGame.getAssassins().get(event.getEntity()).isLinked()) {
+         if (currentGame.getAssassins().containsKey(event.getEntity()) && currentGame.getAssassins().get(event.getEntity()).isLinked() && event.getDamager() instanceof Player) {
             event.setCancelled(true);
          }
+      }
+   }
+
+   @EventHandler
+   public void onAppliedInvisibility(EntityPotionEffectEvent event) {
+      if (isGameInProgress() && event.getAction() == EntityPotionEffectEvent.Action.ADDED && event.getModifiedType() == PotionEffectType.INVISIBILITY && currentGame.getAssassins().containsKey(event.getEntity())) {
+         event.setCancelled(true);
+      }
+   }
+
+   @EventHandler
+   public void onThrowPearl(PlayerInteractEvent event) {
+      if (isGameInProgress() && event.hasItem() && event.getItem().getType() == Material.ENDER_PEARL) {
+         event.setCancelled(true);
       }
    }
 
@@ -127,6 +163,21 @@ public class ManhuntEvents implements Listener {
       if (isGameInProgress() && currentGame.getRandomMen().contains(event.getEntity())) {
          event.setCancelled(true);
       }
+   }
+
+   @EventHandler
+   public void onPlayerDied(PlayerDeathEvent event) {
+      if (isGameInProgress()) {
+         event.getDrops().removeIf(stack -> stack.getType() == Material.COMPASS);
+         if (currentGame.getRandomMen().contains(event.getPlayer()))
+            event.getDrops().forEach(itemStack -> itemStack.editMeta(itemMeta -> itemMeta.getPersistentDataContainer().set(CAN_PICKUP, PersistentDataType.BYTE, (byte)0)));
+      }
+   }
+
+   @EventHandler
+   public void onHunterRespawn(PlayerRespawnEvent event) {
+      if (isGameInProgress() && !currentGame.getRunners().contains(event.getPlayer()))
+         event.getPlayer().getInventory().addItem(new ItemStack(Material.COMPASS));
    }
 
    @EventHandler
@@ -151,9 +202,9 @@ public class ManhuntEvents implements Listener {
       if (isGameInProgress()) {
          Inventory inventory = event.getInventory();
          if (currentGame.getRandomMen().contains(event.getPlayer())) {
-            if (!(inventory.getHolder() instanceof Barrel || (inventory.getHolder() instanceof Chest chest && chest.getBlock().getBlockData().getMaterial() == Material.ENDER_CHEST))) {
+            BlockState state = ((CraftBlock)((Chest)inventory.getHolder()).getBlock()).getNMS();
+            if (!(inventory.getHolder() instanceof Barrel || inventory instanceof CraftingInventory || state.is(Blocks.ENDER_CHEST))) {
                event.setCancelled(true);
-               return;
             }
          } else {
             if (inventory.getHolder() instanceof Barrel) {
@@ -168,48 +219,5 @@ public class ManhuntEvents implements Listener {
       if (isGameInProgress()) {
          currentGame.tick(event.getTickNumber());
       }
-   }
-
-   // from https://github.com/NateKomodo/DreamManHunt/blob/a514684093c386beef7374d17cfc2b7cf35c7fdc/src/main/java/cloud/lagrange/assassin/Worker.java#L107
-   private LivingEntity getTarget(Player player) {
-      int range = 60;
-      List<Entity> nearbyEntities = player.getNearbyEntities(range, range, range);
-      ArrayList<LivingEntity> entities = new ArrayList<>();
-
-      for (Entity e : nearbyEntities) {
-         if (e instanceof LivingEntity) {
-            entities.add((LivingEntity) e);
-         }
-      }
-
-      LivingEntity target = null;
-      BlockIterator bItr = new BlockIterator(player, range);
-      Block block;
-      Location loc;
-      int bx, by, bz;
-      double ex, ey, ez;
-      // loop through player's line of sight
-      while (bItr.hasNext()) {
-         block = bItr.next();
-         if (!block.getType().equals(Material.AIR) && !block.getType().equals(Material.WATER)) break;
-         bx = block.getX();
-         by = block.getY();
-         bz = block.getZ();
-         // check for entities near this block in the line of sight
-         for (LivingEntity e : entities) {
-            loc = e.getLocation();
-            ex = loc.getX();
-            ey = loc.getY();
-            ez = loc.getZ();
-            if ((bx - .15 <= ex && ex <= bx + 1.15)
-                    && (bz - .15 <= ez && ez <= bz + 1.15)
-                    && (by - 1 <= ey && ey <= by + 1)) {
-               // entity is close enough, set target and stop
-               target = e;
-               break;
-            }
-         }
-      }
-      return target;
    }
 }

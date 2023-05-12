@@ -1,6 +1,8 @@
 package me.alphamode.varietyhunters.manhunt;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Server;
@@ -19,7 +21,7 @@ public class ManhuntCommands {
    public static boolean initGame(@NotNull CommandSender sender, @NotNull Command command, @NotNull String commandLabel, String[] args) {
       if (sender instanceof Player commandPlayer) {
          if (ManhuntEvents.getCurrentGame() != null) {
-            sender.sendMessage(Component.text("A game already exists!"));
+            sender.sendMessage(ManhuntGame.PREFIX.append(Component.text("A game already exists!")));
             return true;
          }
 
@@ -34,10 +36,9 @@ public class ManhuntCommands {
 
    public static boolean startGame(@NotNull CommandSender sender, @NotNull Command command, @NotNull String commandLabel, String[] args) {
       if (ManhuntEvents.getCurrentGame() == null) {
-         sender.sendMessage(Component.text("No game in progress."));
+         sender.sendMessage(ManhuntGame.PREFIX.append(Component.text("No game in progress.")));
       }
       ManhuntEvents.getCurrentGame().startGame();
-      sender.sendMessage(Component.text("Game has been started! Don't die..."));
       return true;
    }
 
@@ -49,7 +50,7 @@ public class ManhuntCommands {
    public static boolean add(@NotNull CommandSender sender, @NotNull Command command, @NotNull String commandLabel, String[] a) {
       if (ManhuntEvents.getCurrentGame() == null) {
          ManhuntEvents.setCurrentGame(new ManhuntGame());
-         sender.sendMessage(Component.text("No game in progress creating one!"));
+         ManhuntEvents.getCurrentGame().sendGameMessage(Component.text("No game in progress creating one!"));
       }
 
       Server server = sender.getServer();
@@ -60,10 +61,10 @@ public class ManhuntCommands {
       for(String arg : args) {
          Player player = server.getPlayer(arg);
          if (player == null) {
-            sender.sendMessage(Component.text("Could not find player: " + arg));
+            sender.sendMessage(ManhuntGame.PREFIX.append(Component.text("Could not find player: " + arg)));
          } else {
             ManhuntEvents.getCurrentGame().add(classType, player);
-            sender.sendMessage(Component.text("Added " + player.getName() + " to the " + classType + " class."));
+            sender.sendMessage(ManhuntGame.PREFIX.append(Component.text("Added " + player.getName() + " to the " + classType + " class.")));
          }
       }
 
